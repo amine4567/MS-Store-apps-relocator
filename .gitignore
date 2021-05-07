@@ -1,0 +1,5 @@
+# Environment
+.env
+
+# Python bytecode
+__pycache__

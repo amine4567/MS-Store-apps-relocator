@@ -18,20 +18,3 @@ def get_running_uwp_apps() -> List[Dict[str, str]]:
         for row in cmd_output_list
     ]
     return cmd_output_list
-
-
-def dump_uwp_app(uwp_dumper_path: str, pid: int):
-    proc = subprocess.Popen(
-        [uwp_dumper_path, "-p", str(pid)],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding="utf-8",
-    )
-
-    output, _ = proc.communicate(input="\n")
-
-    if "Failed to query process" in output:
-        raise ValueError(
-            "The provided process id doesn't correspond to an UWP application"
-        )

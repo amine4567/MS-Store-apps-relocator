@@ -4,6 +4,7 @@ import sys
 from PySide6 import QtCore, QtWidgets, QtGui
 
 from uwp import get_running_uwp_apps
+import consts
 
 
 def process_uwpdumper_output(output: str):
@@ -20,21 +21,56 @@ def process_uwpdumper_output(output: str):
     return processed_output
 
 
+class ImageWidget(QtWidgets.QWidget):
+    def __init__(
+        self,
+        image_path: str,
+        width: int,
+        height: int,
+        bkgrnd_color: QtGui.QColor,
+        parent: QtWidgets.QWidget,
+    ):
+        super(ImageWidget, self).__init__(parent)
+
+        self.img_width = width
+        self.img_height = height
+        self.bkgrnd_color = bkgrnd_color
+        self.picture = QtGui.QPixmap(image_path).scaled(
+            self.img_width,
+            self.img_height,
+            aspectMode=QtCore.Qt.KeepAspectRatio,
+            mode=QtCore.Qt.SmoothTransformation,
+        )
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(
+            0,
+            0,
+            self.img_width,
+            self.img_height,
+            QtGui.QBrush(self.bkgrnd_color),
+        )
+        painter.drawPixmap(0, 0, self.picture)
+
+
 class MyWidget(QtWidgets.QWidget):
     def __init__(self, uwpdumper_path: str):
         super().__init__()
 
         self.uwpdumper_path = uwpdumper_path
 
+        self.selected_process_data = None
+
         # Widgets definitions
         self.uwp_process_label = QtWidgets.QLabel("UWP process")
-        self.uwp_process = QtWidgets.QLineEdit()
+        self.selected_uwp_process = QtWidgets.QLineEdit()
         self.select_uwp_btn = QtWidgets.QPushButton("Select")
         self.uwp_selecting_dialog = QtWidgets.QDialog(
             f=QtCore.Qt.WindowMaximizeButtonHint | QtCore.Qt.WindowCloseButtonHint
         )
-        self.uwp_processes_dropdown = QtWidgets.QComboBox()
-        self.refresh_btn = QtWidgets.QPushButton("Refresh list")
+        self.select_uwp_in_dialog_btn = QtWidgets.QPushButton("Select")
+        self.refresh_btn = QtWidgets.QPushButton("Refresh")
         self.destn_dir_label = QtWidgets.QLabel("Destination directory")
         self.destn_dir = QtWidgets.QLineEdit()
         self.select_destn_btn = QtWidgets.QPushButton("Browse")
@@ -42,11 +78,13 @@ class MyWidget(QtWidgets.QWidget):
         self.dumping_dialog = QtWidgets.QDialog(
             f=QtCore.Qt.WindowMaximizeButtonHint | QtCore.Qt.WindowCloseButtonHint
         )
+        self.main_msgbox = QtWidgets.QMessageBox(self)
 
         # Set widgets properties/data
         self.destn_dir.setReadOnly(True)
 
-        self.select_uwp_btn.clicked.connect(self.select_uwp_process)
+        self.select_uwp_btn.clicked.connect(self.open_selecting_uwp_dialog)
+        self.select_uwp_in_dialog_btn.clicked.connect(self.select_uwp_process)
         self.refresh_btn.clicked.connect(self.refresh_list)
         self.select_destn_btn.clicked.connect(self.select_destn_folder)
         self.dump_btn.clicked.connect(self.dump_app)
@@ -57,7 +95,9 @@ class MyWidget(QtWidgets.QWidget):
         self.layout.addWidget(
             self.uwp_process_label, 0, 0, 1, 2, alignment=QtCore.Qt.AlignTop
         )
-        self.layout.addWidget(self.uwp_process, 1, 0, alignment=QtCore.Qt.AlignTop)
+        self.layout.addWidget(
+            self.selected_uwp_process, 1, 0, alignment=QtCore.Qt.AlignTop
+        )
         self.layout.addWidget(self.select_uwp_btn, 1, 1, alignment=QtCore.Qt.AlignTop)
         self.layout.addWidget(
             self.destn_dir_label, 2, 0, 1, 2, alignment=QtCore.Qt.AlignTop
@@ -69,6 +109,8 @@ class MyWidget(QtWidgets.QWidget):
         self.layout.setRowStretch(3, 1)
 
         # Selecting UWP process dialog
+        self.uwp_selection_msgbox = QtWidgets.QMessageBox(self.uwp_selecting_dialog)
+
         self.running_uwp_apps_table = QtWidgets.QTableWidget()
         self.running_uwp_apps_table.setEditTriggers(
             QtWidgets.QAbstractItemView.NoEditTriggers
@@ -79,21 +121,28 @@ class MyWidget(QtWidgets.QWidget):
         self.running_uwp_apps_table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectRows
         )
+        self.running_uwp_apps_table.verticalHeader().setSectionResizeMode(
+            QtWidgets.QHeaderView.Fixed
+        )
+
         cols_header = ["PID", "Icon", "Process", "Executable path"]
         self.running_uwp_apps_table.setColumnCount(len(cols_header))
         self.running_uwp_apps_table.setHorizontalHeaderLabels(cols_header)
 
-        self.update_running_uwp_table()
+        # Make the 1st and 2nd columns non-resizable ("PID" and "Icon")
+        hz_header = self.running_uwp_apps_table.horizontalHeader()
+        hz_header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+        hz_header.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
 
-        self.running_uwp_apps_table.resizeRowsToContents()
-        self.running_uwp_apps_table.resizeColumnsToContents()
+        self.update_running_uwp_table()
 
         self.uwp_selecting_dialog.setModal(True)
 
         self.uwp_selecting_layout = QtWidgets.QGridLayout(self.uwp_selecting_dialog)
 
-        self.uwp_selecting_layout.addWidget(self.running_uwp_apps_table)
-        self.uwp_selecting_layout.addWidget(self.refresh_btn)
+        self.uwp_selecting_layout.addWidget(self.running_uwp_apps_table, 0, 0, 1, 2)
+        self.uwp_selecting_layout.addWidget(self.refresh_btn, 1, 0)
+        self.uwp_selecting_layout.addWidget(self.select_uwp_in_dialog_btn, 1, 1)
 
         # Dumping dialog
         self.uwpdumper_output = QtWidgets.QTextBrowser()
@@ -118,10 +167,14 @@ class MyWidget(QtWidgets.QWidget):
                 ),
             )
 
-            pixmap = QtGui.QPixmap(running_app_data["logo_fullpath"])
-            icon_item = QtWidgets.QTableWidgetItem()
-            icon_item.setIcon(QtGui.QIcon(pixmap))
-            self.running_uwp_apps_table.setItem(i, 1, icon_item)
+            icon_widget = ImageWidget(
+                running_app_data["logo_fullpath"],
+                consts.ICON_W,
+                consts.ICON_H,
+                consts.XBOX_GREEN,
+                self.running_uwp_apps_table,
+            )
+            self.running_uwp_apps_table.setCellWidget(i, 1, icon_widget)
 
             self.running_uwp_apps_table.setItem(
                 i, 2, QtWidgets.QTableWidgetItem(running_app_data["image_name"])
@@ -130,14 +183,41 @@ class MyWidget(QtWidgets.QWidget):
                 i, 3, QtWidgets.QTableWidgetItem(running_app_data["executable_path"])
             )
 
+        self.running_uwp_apps_table.resizeColumnsToContents()
+        self.running_uwp_apps_table.setColumnWidth(1, consts.ICON_W)
+
+        self.running_uwp_apps_table.resizeRowsToContents()
+        for i in range(self.running_uwp_apps_table.rowCount()):
+            current_height = self.running_uwp_apps_table.rowHeight(i)
+            if consts.ICON_H > current_height:
+                self.running_uwp_apps_table.setRowHeight(i, consts.ICON_H)
+
     @QtCore.Slot()
     def refresh_list(self):
-        self.uwp_processes_dropdown.clear()
         self.update_running_uwp_table()
 
     @QtCore.Slot()
-    def select_uwp_process(self):
+    def open_selecting_uwp_dialog(self):
         self.uwp_selecting_dialog.show()
+
+    @QtCore.Slot()
+    def select_uwp_process(self):
+        selected_rows = list(
+            set([elt.row() for elt in self.running_uwp_apps_table.selectedIndexes()])
+        )
+        msg = None
+        if len(selected_rows) == 0:
+            msg = "Please select a process"
+        elif len(selected_rows) > 1:
+            msg = "More than one process selected, this shouldn't be possible"
+        else:
+            self.selected_process_data = self.running_uwp_apps[selected_rows[0]]
+            self.selected_uwp_process.setText(self.selected_process_data["image_name"])
+            self.uwp_selecting_dialog.done(0)
+
+        if msg is not None:
+            self.uwp_selection_msgbox.setText(msg)
+            self.uwp_selection_msgbox.show()
 
     @QtCore.Slot()
     def select_destn_folder(self):
@@ -148,25 +228,33 @@ class MyWidget(QtWidgets.QWidget):
 
     @QtCore.Slot()
     def dump_app(self):
-        app_pid = self.running_uwp_apps[self.uwp_processes_dropdown.currentIndex()][
-            "pid"
-        ]
+        msg = None
+        if self.selected_process_data is None:
+            msg = "Please select a process"
+        elif self.destn_dir.text() == "":
+            msg = "Please select a destination directory"
+        else:
+            app_pid = self.selected_process_data["pid"]
 
-        self.uwp_dumper_process = QtCore.QProcess()
-        self.uwp_dumper_process.readyReadStandardOutput.connect(
-            self.update_uwpdumper_output
-        )
+            self.uwp_dumper_process = QtCore.QProcess()
+            self.uwp_dumper_process.readyReadStandardOutput.connect(
+                self.update_uwpdumper_output
+            )
 
-        self.uwp_dumper_process.start(
-            self.uwpdumper_path,
-            ["-p", str(app_pid), "-d", self.destn_dir.text().replace("/", "\\")],
-        )
+            self.uwp_dumper_process.start(
+                self.uwpdumper_path,
+                ["-p", str(app_pid), "-d", self.destn_dir.text().replace("/", "\\")],
+            )
 
-        # UWPDumper expects a user input when the dump is done
-        self.uwp_dumper_process.write(QtCore.QByteArray(b"\n"))
+            # UWPDumper expects a user input when the dump is done
+            self.uwp_dumper_process.write(QtCore.QByteArray(b"\n"))
 
-        self.dumping_dialog.show()
-        self.uwpdumper_output.clear()
+            self.dumping_dialog.show()
+            self.uwpdumper_output.clear()
+
+        if msg is not None:
+            self.main_msgbox.setText(msg)
+            self.main_msgbox.show()
 
     @QtCore.Slot()
     def update_uwpdumper_output(self):

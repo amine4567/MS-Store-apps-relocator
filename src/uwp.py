@@ -1,17 +1,22 @@
 from typing import List, Dict
 import subprocess
 import os
-import time
 import re
 from functools import lru_cache
 
 import psutil
 
+powershell_cmds = {
+    # We filter out all running instances of "RuntimeBroker.exe"
+    "list_running_uwp_apps": "tasklist /apps /fo list /fi 'status eq running' /fi 'imagename ne RuntimeBroker.exe'",
+    "get_installed_uwp_apps": "Get-AppxPackage",
+}
+
 
 @lru_cache(maxsize=32)
 def get_installed_uwp_apps():
     all_installed_uwps = subprocess.run(
-        "powershell Get-AppxPackage",
+        f"powershell {powershell_cmds['get_installed_uwp_apps']}",
         capture_output=True,
     ).stdout.decode()
     all_installed_uwps = re.sub("\\r\\n +", " ", all_installed_uwps)
@@ -30,24 +35,9 @@ def get_installed_uwp_apps():
     return all_uwps_data_dict
 
 
-class UWPAppManifest:
-    def __init__(self, pkg_name: str):
-        self._manifest_str = subprocess.run(
-            f"powershell (Get-AppxPackageManifest -Package {pkg_name}).OuterXml",
-            capture_output=True,
-        ).stdout.decode()
-
-    def get_name(self) -> str:
-        return re.search(r'<Identity Name="(.*?)"', self._manifest_str).group(1)
-
-    def get_logo_location(self) -> str:
-        return re.search(r"<Logo>(.*?)</Logo>", self._manifest_str).group(1)
-
-
 def get_running_uwp_apps() -> List[Dict[str, str]]:
-    t1 = time.time()
     cmd_output = subprocess.run(
-        'tasklist /apps /fo list /fi "status eq running"', capture_output=True
+        f"powershell {powershell_cmds['list_running_uwp_apps']}", capture_output=True
     )
     cmd_output_list = cmd_output.stdout.decode().replace("\r", "").split("\n")
     cmd_output_list = [
@@ -92,6 +82,4 @@ def get_running_uwp_apps() -> List[Dict[str, str]]:
             install_location, logos_dir, logo_filename
         )
 
-    t2 = time.time()
-    print(f"get_running_uwp_apps took {t2-t1} seconds")
     return cmd_output_list

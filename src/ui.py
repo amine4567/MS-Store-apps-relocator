@@ -1,7 +1,9 @@
+import time
 import re
 import sys
 
 from PySide6 import QtCore, QtWidgets, QtGui
+import psutil
 
 from uwp import get_running_uwp_apps
 import consts
@@ -146,6 +148,11 @@ class MyWidget(QtWidgets.QWidget):
 
         # Dumping dialog
         self.uwpdumper_output = QtWidgets.QTextBrowser()
+        self.dumping_progressbar = QtWidgets.QProgressBar()
+        self.cancel_dump_btn = QtWidgets.QPushButton("Cancel")
+        self.uwp_dumping_msgbox = QtWidgets.QMessageBox(self.dumping_dialog)
+
+        self.cancel_dump_btn.clicked.connect(self.cancel_dump)
 
         self.dumping_dialog.setModal(True)
 
@@ -153,6 +160,8 @@ class MyWidget(QtWidgets.QWidget):
 
         self.dumping_dialog_layout.addWidget(QtWidgets.QLabel("UWPDumper output:"))
         self.dumping_dialog_layout.addWidget(self.uwpdumper_output)
+        self.dumping_dialog_layout.addWidget(self.dumping_progressbar)
+        self.dumping_dialog_layout.addWidget(self.cancel_dump_btn)
 
     def update_running_uwp_table(self):
         self.running_uwp_apps = get_running_uwp_apps()
@@ -198,6 +207,7 @@ class MyWidget(QtWidgets.QWidget):
 
     @QtCore.Slot()
     def open_selecting_uwp_dialog(self):
+        self.update_running_uwp_table()
         self.uwp_selecting_dialog.show()
 
     @QtCore.Slot()
@@ -224,7 +234,8 @@ class MyWidget(QtWidgets.QWidget):
         destn_dir_path = QtWidgets.QFileDialog.getExistingDirectory(
             None, "Select a folder:", "C:\\", QtWidgets.QFileDialog.ShowDirsOnly
         )
-        self.destn_dir.setText(destn_dir_path)
+        if destn_dir_path != "":
+            self.destn_dir.setText(destn_dir_path)
 
     @QtCore.Slot()
     def dump_app(self):
@@ -260,14 +271,43 @@ class MyWidget(QtWidgets.QWidget):
     def update_uwpdumper_output(self):
         new_output = self.uwp_dumper_process.readAllStandardOutput()
         processed_output = process_uwpdumper_output(new_output.data().decode())
+
+        current_progress = re.search(r"[0-9]+\/[0-9]+", processed_output)
+        if current_progress is not None:
+            current_step, max_steps = list(
+                map(int, current_progress.group(0).split("/"))
+            )
+            if current_step == 1:
+                self.dumping_progressbar.setMaximum(max_steps)
+            elif current_step > 1 and current_step <= max_steps:
+                self.dumping_progressbar.setValue(current_step)
+
         self.uwpdumper_output.append(processed_output)
+
+    @QtCore.Slot()
+    def cancel_dump(self):
+        uwp_dumper_pid = self.uwp_dumper_process.processId()
+
+        self.uwp_dumper_process.kill()
+        self.uwp_dumping_msgbox.setText("Killing the UWPDumper process ...")
+        self.uwp_dumping_msgbox.show()
+
+        while True:
+            if not psutil.pid_exists(uwp_dumper_pid):
+                break
+            time.sleep(2)
+        sys.stdout.flush()
+
+        self.uwp_dumping_msgbox.setText("UWPDumper process killed successfully.")
+
+        self.dumping_dialog.done(0)
 
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication([])
 
     widget = MyWidget(
-        uwpdumper_path="C:\\Games\\_Tools\\UWPDumper-x64\\UWPInjector.exe"
+        uwpdumper_path="C:\\Projects\\_forks\\UWPDumper\\bin\\UWPInjector.exe"
     )
     widget.resize(800, 600)
     widget.show()

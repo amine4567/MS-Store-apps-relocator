@@ -6,3 +6,7 @@ __pycache__
 
 # Notes
 TODO.md
+
+# Build artifacts
+dist
+build

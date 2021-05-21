@@ -14,10 +14,21 @@ powershell_cmds = {
 
 
 @lru_cache(maxsize=32)
+def get_subproc_startupinfo():
+    """startup configuration to hide the subprocess's window"""
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+
+    return startupinfo
+
+
+@lru_cache(maxsize=32)
 def get_installed_uwp_apps():
     all_installed_uwps = subprocess.run(
         f"powershell {powershell_cmds['get_installed_uwp_apps']}",
         capture_output=True,
+        startupinfo=get_subproc_startupinfo(),
     ).stdout.decode()
     all_installed_uwps = re.sub("\\r\\n +", " ", all_installed_uwps)
 
@@ -37,7 +48,9 @@ def get_installed_uwp_apps():
 
 def get_running_uwp_apps() -> List[Dict[str, str]]:
     cmd_output = subprocess.run(
-        f"powershell {powershell_cmds['list_running_uwp_apps']}", capture_output=True
+        f"powershell {powershell_cmds['list_running_uwp_apps']}",
+        capture_output=True,
+        startupinfo=get_subproc_startupinfo(),
     )
     cmd_output_list = cmd_output.stdout.decode().replace("\r", "").split("\n")
     cmd_output_list = [

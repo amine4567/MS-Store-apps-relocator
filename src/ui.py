@@ -6,7 +6,7 @@ from PySide6 import QtCore, QtWidgets, QtGui
 import psutil
 
 from uwp import get_running_uwp_apps
-import consts
+from consts import ICON_H, ICON_W, XBOX_GREEN, DumpingStatus
 
 
 def process_uwpdumper_output(output: str):
@@ -63,6 +63,7 @@ class MyWidget(QtWidgets.QWidget):
         self.uwpdumper_path = uwpdumper_path
 
         self.selected_process_data = None
+        self.dumping_status = DumpingStatus.NO_DUMPING
 
         # Widgets definitions
         self.uwp_process_label = QtWidgets.QLabel("UWP process")
@@ -150,6 +151,7 @@ class MyWidget(QtWidgets.QWidget):
         self.uwpdumper_output = QtWidgets.QTextBrowser()
         self.dumping_progressbar = QtWidgets.QProgressBar()
         self.cancel_dump_btn = QtWidgets.QPushButton("Cancel")
+        self.continue_btn = QtWidgets.QPushButton("Continue")
         self.uwp_dumping_msgbox = QtWidgets.QMessageBox(self.dumping_dialog)
 
         self.cancel_dump_btn.clicked.connect(self.cancel_dump)
@@ -162,6 +164,9 @@ class MyWidget(QtWidgets.QWidget):
         self.dumping_dialog_layout.addWidget(self.uwpdumper_output)
         self.dumping_dialog_layout.addWidget(self.dumping_progressbar)
         self.dumping_dialog_layout.addWidget(self.cancel_dump_btn)
+        self.dumping_dialog_layout.addWidget(self.continue_btn)
+
+        self.continue_btn.hide()
 
     def update_running_uwp_table(self):
         self.running_uwp_apps = get_running_uwp_apps()
@@ -178,9 +183,9 @@ class MyWidget(QtWidgets.QWidget):
 
             icon_widget = ImageWidget(
                 running_app_data["logo_fullpath"],
-                consts.ICON_W,
-                consts.ICON_H,
-                consts.XBOX_GREEN,
+                ICON_W,
+                ICON_H,
+                XBOX_GREEN,
                 self.running_uwp_apps_table,
             )
             self.running_uwp_apps_table.setCellWidget(i, 1, icon_widget)
@@ -193,13 +198,13 @@ class MyWidget(QtWidgets.QWidget):
             )
 
         self.running_uwp_apps_table.resizeColumnsToContents()
-        self.running_uwp_apps_table.setColumnWidth(1, consts.ICON_W)
+        self.running_uwp_apps_table.setColumnWidth(1, ICON_W)
 
         self.running_uwp_apps_table.resizeRowsToContents()
         for i in range(self.running_uwp_apps_table.rowCount()):
             current_height = self.running_uwp_apps_table.rowHeight(i)
-            if consts.ICON_H > current_height:
-                self.running_uwp_apps_table.setRowHeight(i, consts.ICON_H)
+            if ICON_H > current_height:
+                self.running_uwp_apps_table.setRowHeight(i, ICON_H)
 
     @QtCore.Slot()
     def refresh_list(self):
@@ -251,11 +256,13 @@ class MyWidget(QtWidgets.QWidget):
             self.uwp_dumper_process.readyReadStandardOutput.connect(
                 self.update_uwpdumper_output
             )
+            self.uwp_dumper_process.finished.connect(self.handle_uwpdumper_finished)
 
             self.uwp_dumper_process.start(
                 self.uwpdumper_path,
                 ["-p", str(app_pid), "-d", self.destn_dir.text().replace("/", "\\")],
             )
+            self.dumping_status = DumpingStatus.IN_PROGRESS
 
             # UWPDumper expects a user input when the dump is done
             self.uwp_dumper_process.write(QtCore.QByteArray(b"\n"))
@@ -272,7 +279,11 @@ class MyWidget(QtWidgets.QWidget):
         new_output = self.uwp_dumper_process.readAllStandardOutput()
         processed_output = process_uwpdumper_output(new_output.data().decode())
 
+        if "Dump complete" in processed_output:
+            self.dumping_status = DumpingStatus.COMPLETE
+
         current_progress = re.search(r"[0-9]+\/[0-9]+", processed_output)
+
         if current_progress is not None:
             current_step, max_steps = list(
                 map(int, current_progress.group(0).split("/"))
@@ -301,6 +312,22 @@ class MyWidget(QtWidgets.QWidget):
         self.uwp_dumping_msgbox.setText("UWPDumper process killed successfully.")
 
         self.dumping_dialog.done(0)
+
+    @QtCore.Slot()
+    def handle_uwpdumper_finished(self):
+        self.cancel_dump_btn.hide()
+        if self.dumping_status == DumpingStatus.COMPLETE:
+            self.selected_process_data["app_name"]
+            self.uwp_dumping_msgbox.setText(
+                f"{self.selected_process_data['app_name']} "
+                f"successfully dumped to {self.destn_dir.text()}"
+            )
+            self.continue_btn.show()
+        else:
+            self.dumping_status = DumpingStatus.ERROR
+            self.uwp_dumping_msgbox.setText("Error while dumping")
+            self.dumping_dialog.done(1)
+        self.uwp_dumping_msgbox.show()
 
 
 if __name__ == "__main__":

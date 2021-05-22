@@ -1,8 +1,6 @@
 import re
 import sys
-import time
 
-import psutil
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from consts import BUTTON_WIDTH, DEFAULT_FONT, ICON_H, ICON_W, XBOX_GREEN, DumpingStatus
@@ -79,7 +77,6 @@ class AppWidget(QtWidgets.QWidget):
             self.refresh_btn,
             self.select_uwp_in_dialog_btn,
             self.dump_btn,
-            self.cancel_dump_btn,
             self.continue_btn,
         ]:
             btn.setFixedWidth(BUTTON_WIDTH)
@@ -97,7 +94,9 @@ class AppWidget(QtWidgets.QWidget):
         self.destn_dir_label = QtWidgets.QLabel("Destination directory")
         self.destn_dir = QtWidgets.QLineEdit()
         self.select_destn_btn = QtWidgets.QPushButton("Browse")
-
+        self.registering_checkbox = QtWidgets.QCheckBox(
+            "Remove the old installation and register the new one after dumping"
+        )
         self.dump_btn = QtWidgets.QPushButton("Dump")
         self.dumping_dialog = QtWidgets.QDialog(
             f=QtCore.Qt.WindowMaximizeButtonHint | QtCore.Qt.WindowCloseButtonHint
@@ -130,10 +129,15 @@ class AppWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.destn_dir, 3, 0, alignment=QtCore.Qt.AlignTop)
         self.layout.addWidget(self.select_destn_btn, 3, 1, alignment=QtCore.Qt.AlignTop)
 
+        self.layout.addWidget(
+            self.registering_checkbox, 4, 0, 1, 2, alignment=QtCore.Qt.AlignTop
+        )
         self.layout.addWidget(self.dump_btn, 5, 0, 1, 2, alignment=QtCore.Qt.AlignTop)
         self.layout.setRowStretch(3, 1)
 
     def setup_uwp_selecting_dialog(self):
+        self.uwp_selecting_dialog.resize(800, 600)
+
         self.uwp_selection_msgbox = QtWidgets.QMessageBox(self.uwp_selecting_dialog)
 
         self.running_uwp_apps_table = QtWidgets.QTableWidget()
@@ -174,13 +178,11 @@ class AppWidget(QtWidgets.QWidget):
         )
 
     def setup_dumping_dialog(self):
+        self.dumping_dialog.resize(800, 600)
         self.uwpdumper_output = QtWidgets.QTextBrowser()
         self.dumping_progressbar = QtWidgets.QProgressBar()
-        self.cancel_dump_btn = QtWidgets.QPushButton("Cancel")
         self.continue_btn = QtWidgets.QPushButton("Continue")
         self.uwp_dumping_msgbox = QtWidgets.QMessageBox(self.dumping_dialog)
-
-        self.cancel_dump_btn.clicked.connect(self.cancel_dump)
 
         self.dumping_dialog.setModal(True)
 
@@ -189,10 +191,7 @@ class AppWidget(QtWidgets.QWidget):
         self.dumping_dialog_layout.addWidget(QtWidgets.QLabel("UWPDumper output:"))
         self.dumping_dialog_layout.addWidget(self.uwpdumper_output)
         self.dumping_dialog_layout.addWidget(self.dumping_progressbar)
-        self.dumping_dialog_layout.addWidget(self.cancel_dump_btn)
         self.dumping_dialog_layout.addWidget(self.continue_btn)
-
-        self.continue_btn.hide()
 
     def update_running_uwp_table(self):
         self.running_uwp_apps = get_running_uwp_apps()
@@ -239,7 +238,7 @@ class AppWidget(QtWidgets.QWidget):
     @QtCore.Slot()
     def open_selecting_uwp_dialog(self):
         self.update_running_uwp_table()
-        self.uwp_selecting_dialog.show()
+        self.uwp_selecting_dialog.open()
 
     @QtCore.Slot()
     def select_uwp_process(self):
@@ -254,7 +253,7 @@ class AppWidget(QtWidgets.QWidget):
         else:
             self.selected_process_data = self.running_uwp_apps[selected_rows[0]]
             self.selected_uwp_process.setText(self.selected_process_data["image_name"])
-            self.uwp_selecting_dialog.done(0)
+            self.uwp_selecting_dialog.close()
 
         if msg is not None:
             self.uwp_selection_msgbox.setText(msg)
@@ -270,6 +269,8 @@ class AppWidget(QtWidgets.QWidget):
 
     @QtCore.Slot()
     def dump_app(self):
+        self.continue_btn.hide()
+
         msg = None
         if self.selected_process_data is None:
             msg = "Please select a process"
@@ -293,7 +294,7 @@ class AppWidget(QtWidgets.QWidget):
             # UWPDumper expects a user input when the dump is done
             self.uwp_dumper_process.write(QtCore.QByteArray(b"\n"))
 
-            self.dumping_dialog.show()
+            self.dumping_dialog.open()
             self.uwpdumper_output.clear()
 
         if msg is not None:
@@ -322,33 +323,15 @@ class AppWidget(QtWidgets.QWidget):
         self.uwpdumper_output.append(processed_output)
 
     @QtCore.Slot()
-    def cancel_dump(self):
-        uwp_dumper_pid = self.uwp_dumper_process.processId()
-
-        self.uwp_dumper_process.kill()
-        self.uwp_dumping_msgbox.setText("Killing the UWPDumper process ...")
-        self.uwp_dumping_msgbox.show()
-
-        while True:
-            if not psutil.pid_exists(uwp_dumper_pid):
-                break
-            time.sleep(2)
-        sys.stdout.flush()
-
-        self.uwp_dumping_msgbox.setText("UWPDumper process killed successfully.")
-
-        self.dumping_dialog.done(0)
-
-    @QtCore.Slot()
     def handle_uwpdumper_finished(self):
-        self.cancel_dump_btn.hide()
         if self.dumping_status == DumpingStatus.COMPLETE:
             self.selected_process_data["app_name"]
             self.uwp_dumping_msgbox.setText(
                 f"{self.selected_process_data['app_name']} "
                 f"successfully dumped to {self.destn_dir.text()}"
             )
-            self.continue_btn.show()
+            if self.registering_checkbox.isChecked():
+                self.continue_btn.show()
         else:
             self.dumping_status = DumpingStatus.ERROR
             self.uwp_dumping_msgbox.setText("Error while dumping")

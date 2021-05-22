@@ -326,7 +326,6 @@ class MyWidget(QtWidgets.QWidget):
         else:
             self.dumping_status = DumpingStatus.ERROR
             self.uwp_dumping_msgbox.setText("Error while dumping")
-            self.dumping_dialog.done(1)
         self.uwp_dumping_msgbox.show()
 
 

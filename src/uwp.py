@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Callable
 import subprocess
 import os
 import re
@@ -6,30 +6,26 @@ from functools import lru_cache
 
 import psutil
 
-powershell_cmds = {
-    # We filter out all running instances of "RuntimeBroker.exe"
-    "list_running_uwp_apps": "tasklist /apps /fo list /fi 'status eq running' /fi 'imagename ne RuntimeBroker.exe'",
-    "get_installed_uwp_apps": "Get-AppxPackage",
-}
+import cmds
 
 
-@lru_cache(maxsize=32)
-def get_subproc_startupinfo():
-    """startup configuration to hide the subprocess's window"""
+def run_powershell_cmd(cmd: Callable[..., str], **kwargs) -> str:
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startupinfo.wShowWindow = subprocess.SW_HIDE
 
-    return startupinfo
+    output = subprocess.run(
+        f"powershell {cmd(**kwargs)}",
+        capture_output=True,
+        startupinfo=startupinfo,
+    ).stdout.decode()
+
+    return output
 
 
 @lru_cache(maxsize=32)
 def get_installed_uwp_apps():
-    all_installed_uwps = subprocess.run(
-        f"powershell {powershell_cmds['get_installed_uwp_apps']}",
-        capture_output=True,
-        startupinfo=get_subproc_startupinfo(),
-    ).stdout.decode()
+    all_installed_uwps = run_powershell_cmd(cmds.get_installed_uwp_apps)
     all_installed_uwps = re.sub("\\r\\n +", " ", all_installed_uwps)
 
     all_uwps_data = [
@@ -47,12 +43,8 @@ def get_installed_uwp_apps():
 
 
 def get_running_uwp_apps() -> List[Dict[str, str]]:
-    cmd_output = subprocess.run(
-        f"powershell {powershell_cmds['list_running_uwp_apps']}",
-        capture_output=True,
-        startupinfo=get_subproc_startupinfo(),
-    )
-    cmd_output_list = cmd_output.stdout.decode().replace("\r", "").split("\n")
+    cmd_output = run_powershell_cmd(cmds.list_running_uwp_apps)
+    cmd_output_list = cmd_output.replace("\r", "").split("\n")
     cmd_output_list = [
         cmd_output_list[i : i + 4] for i in range(1, len(cmd_output_list), 5)
     ]

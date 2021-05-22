@@ -270,6 +270,7 @@ class AppWidget(QtWidgets.QWidget):
     @QtCore.Slot()
     def dump_app(self):
         self.continue_btn.hide()
+        self.dumping_progressbar.reset()
 
         msg = None
         if self.selected_process_data is None:

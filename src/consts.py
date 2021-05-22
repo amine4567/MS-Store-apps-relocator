@@ -13,3 +13,9 @@ class DumpingStatus(Enum):
     COMPLETE = 0
     IN_PROGRESS = 1
     ERROR = 2
+
+
+DEFAULT_FONT = QtGui.QFont()
+DEFAULT_FONT.setPointSize(10)
+
+BUTTON_WIDTH = 75

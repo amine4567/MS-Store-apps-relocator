@@ -6,7 +6,7 @@ from PySide6 import QtCore, QtWidgets, QtGui
 import psutil
 
 from uwp import get_running_uwp_apps
-from consts import ICON_H, ICON_W, XBOX_GREEN, DumpingStatus
+from consts import ICON_H, ICON_W, XBOX_GREEN, DumpingStatus, DEFAULT_FONT, BUTTON_WIDTH
 
 
 def process_uwpdumper_output(output: str):
@@ -56,7 +56,7 @@ class ImageWidget(QtWidgets.QWidget):
         painter.drawPixmap(0, 0, self.picture)
 
 
-class MyWidget(QtWidgets.QWidget):
+class AppWidget(QtWidgets.QWidget):
     def __init__(self, uwpdumper_path: str):
         super().__init__()
 
@@ -65,6 +65,26 @@ class MyWidget(QtWidgets.QWidget):
         self.selected_process_data = None
         self.dumping_status = DumpingStatus.NO_DUMPING
 
+        self.setup_main_window()
+        self.setup_uwp_selecting_dialog()
+        self.setup_dumping_dialog()
+
+        self.setFont(DEFAULT_FONT)
+        self.uwp_selecting_dialog.setFont(DEFAULT_FONT)
+        self.dumping_dialog.setFont(DEFAULT_FONT)
+
+        for btn in [
+            self.select_destn_btn,
+            self.select_uwp_btn,
+            self.refresh_btn,
+            self.select_uwp_in_dialog_btn,
+            self.dump_btn,
+            self.cancel_dump_btn,
+            self.continue_btn,
+        ]:
+            btn.setFixedWidth(BUTTON_WIDTH)
+
+    def setup_main_window(self):
         # Widgets definitions
         self.uwp_process_label = QtWidgets.QLabel("UWP process")
         self.selected_uwp_process = QtWidgets.QLineEdit()
@@ -77,6 +97,7 @@ class MyWidget(QtWidgets.QWidget):
         self.destn_dir_label = QtWidgets.QLabel("Destination directory")
         self.destn_dir = QtWidgets.QLineEdit()
         self.select_destn_btn = QtWidgets.QPushButton("Browse")
+
         self.dump_btn = QtWidgets.QPushButton("Dump")
         self.dumping_dialog = QtWidgets.QDialog(
             f=QtCore.Qt.WindowMaximizeButtonHint | QtCore.Qt.WindowCloseButtonHint
@@ -85,6 +106,7 @@ class MyWidget(QtWidgets.QWidget):
 
         # Set widgets properties/data
         self.destn_dir.setReadOnly(True)
+        self.selected_uwp_process.setReadOnly(True)
 
         self.select_uwp_btn.clicked.connect(self.open_selecting_uwp_dialog)
         self.select_uwp_in_dialog_btn.clicked.connect(self.select_uwp_process)
@@ -108,10 +130,10 @@ class MyWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.destn_dir, 3, 0, alignment=QtCore.Qt.AlignTop)
         self.layout.addWidget(self.select_destn_btn, 3, 1, alignment=QtCore.Qt.AlignTop)
 
-        self.layout.addWidget(self.dump_btn, 4, 0, 1, 2, alignment=QtCore.Qt.AlignTop)
+        self.layout.addWidget(self.dump_btn, 5, 0, 1, 2, alignment=QtCore.Qt.AlignTop)
         self.layout.setRowStretch(3, 1)
 
-        # Selecting UWP process dialog
+    def setup_uwp_selecting_dialog(self):
         self.uwp_selection_msgbox = QtWidgets.QMessageBox(self.uwp_selecting_dialog)
 
         self.running_uwp_apps_table = QtWidgets.QTableWidget()
@@ -144,10 +166,14 @@ class MyWidget(QtWidgets.QWidget):
         self.uwp_selecting_layout = QtWidgets.QGridLayout(self.uwp_selecting_dialog)
 
         self.uwp_selecting_layout.addWidget(self.running_uwp_apps_table, 0, 0, 1, 2)
-        self.uwp_selecting_layout.addWidget(self.refresh_btn, 1, 0)
-        self.uwp_selecting_layout.addWidget(self.select_uwp_in_dialog_btn, 1, 1)
+        self.uwp_selecting_layout.addWidget(
+            self.refresh_btn, 1, 0, alignment=QtCore.Qt.AlignLeft
+        )
+        self.uwp_selecting_layout.addWidget(
+            self.select_uwp_in_dialog_btn, 1, 1, alignment=QtCore.Qt.AlignRight
+        )
 
-        # Dumping dialog
+    def setup_dumping_dialog(self):
         self.uwpdumper_output = QtWidgets.QTextBrowser()
         self.dumping_progressbar = QtWidgets.QProgressBar()
         self.cancel_dump_btn = QtWidgets.QPushButton("Cancel")
@@ -332,7 +358,7 @@ class MyWidget(QtWidgets.QWidget):
 if __name__ == "__main__":
     app = QtWidgets.QApplication([])
 
-    widget = MyWidget(
+    widget = AppWidget(
         uwpdumper_path="C:\\Projects\\_forks\\UWPDumper\\bin\\UWPInjector.exe"
     )
     widget.resize(800, 600)

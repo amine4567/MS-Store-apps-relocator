@@ -1,8 +1,8 @@
-from typing import List, Dict, Callable
-import subprocess
 import os
 import re
+import subprocess
 from functools import lru_cache
+from typing import Callable, Dict, List
 
 import psutil
 

@@ -1,12 +1,12 @@
-import time
 import re
 import sys
+import time
 
-from PySide6 import QtCore, QtWidgets, QtGui
 import psutil
+from PySide6 import QtCore, QtGui, QtWidgets
 
+from consts import BUTTON_WIDTH, DEFAULT_FONT, ICON_H, ICON_W, XBOX_GREEN, DumpingStatus
 from uwp import get_running_uwp_apps
-from consts import ICON_H, ICON_W, XBOX_GREEN, DumpingStatus, DEFAULT_FONT, BUTTON_WIDTH
 
 
 def process_uwpdumper_output(output: str):
